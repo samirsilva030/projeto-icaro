@@ -1,7 +1,7 @@
 export function PhaseNav({ current }) {
-  const phases = ['MISSÃO', 'MONTAGEM', 'LANÇAMENTO', 'VIAGEM', 'RELATÓRIO']
+  const phases = ['MISSION', 'ASSEMBLY', 'LAUNCH', 'FLIGHT', 'REPORT']
   return (
-    <nav className="phases" aria-label="Fases da missão">
+    <nav className="phases" aria-label="Mission phases">
       {phases.map((label, index) => (
         <span key={label} className={index === current ? 'on' : index < current ? 'done' : ''}>
           {String(index + 1).padStart(2, '0')} {label}
@@ -72,7 +72,7 @@ export function RocketView({ parts, lit = false }) {
         </g>
       )}
       <text className="rocket-word" x="92" y="196" textAnchor="middle" transform="rotate(-90 92 196)">
-        ICARO
+        ICARUS
       </text>
       <path d="M92 318 L110 402 L128 318 Z" fill="#222833" />
       <path d="M100 336 L110 390 L120 336 Z" fill="url(#flame)" />
@@ -84,22 +84,22 @@ export function RocketView({ parts, lit = false }) {
 export function Cabin({ mood = 'calm' }) {
   const alert =
     mood === 'storm'
-      ? ['ALERTA', 'TEMPESTADE SOLAR']
+      ? ['ALERT', 'SOLAR STORM']
       : mood === 'power'
-        ? ['CARGA', 'BATERIAS EM QUEDA']
+        ? ['POWER', 'BATTERIES FALLING']
         : mood === 'damage'
-          ? ['CASCO', 'PRESSÃO INSTÁVEL']
-          : ['NOMINAL', 'CÉU ABERTO']
+          ? ['HULL', 'PRESSURE UNSTABLE']
+          : ['NOMINAL', 'OPEN SKY']
   return (
     <div className={`cabin mood-${mood}`} aria-hidden="true">
       <div className="cabin-rivets" />
       <div className="shelf">
         <div className="plant"><i /><b /></div>
-        <div className="mug">UM DIA<br />MAIS LONGE</div>
+        <div className="mug">ONE DAY<br />FARTHER</div>
         <div className="photo" />
-        <div className="crate"><span>RAÇÕES<br />ESPACIAIS</span></div>
+        <div className="crate"><span>SPACE<br />RATIONS</span></div>
         <div className="tank"><em>O₂</em></div>
-        <div className="duffel"><span>EXPLORAR<br />PRESERVAR<br />CONTINUAR</span></div>
+        <div className="duffel"><span>EXPLORE<br />PRESERVE<br />CONTINUE</span></div>
       </div>
       <svg className="astronaut" viewBox="0 0 460 480">
         <ellipse cx="230" cy="450" rx="150" ry="18" fill="#000" opacity="0.28" />
@@ -110,7 +110,7 @@ export function Cabin({ mood = 'calm' }) {
         <path d="M268 268h16v92h-16z" fill="#c45520" />
         <rect x="206" y="330" width="62" height="24" rx="2" fill="#f7f4ee" stroke="#241c16" />
         <text x="237" y="346" textAnchor="middle" fontSize="12" fontFamily="IBM Plex Mono, monospace" fill="#1c1916">
-          ÍCARO
+          ICARUS
         </text>
         <circle cx="286" cy="358" r="11" fill="#0b8f4a" />
         <path d="M286 350l6 7h-12z" fill="#ffe14a" />
@@ -151,7 +151,7 @@ export function Cabin({ mood = 'calm' }) {
           </svg>
         </div>
       </div>
-      <div className="stamp">MESMA TERRA<br />MAIS HORIZONTES</div>
+      <div className="stamp">SAME EARTH<br />FARTHER HORIZONS</div>
     </div>
   )
 }
@@ -183,9 +183,10 @@ function Icon({ name }) {
   )
 }
 
-export function ChoiceButton({ choice, owned, partLabel, onPick, variant = 'tech' }) {
-  const locked = Boolean(choice.requires && !owned)
-  const unlocked = Boolean(choice.requires && owned)
+export function ChoiceButton({ choice, owned, partLabel, onPick, variant = 'tech', blocked = false }) {
+  const needsPart = Boolean(choice.requires && !owned)
+  const locked = needsPart || blocked
+  const unlocked = Boolean(choice.requires && owned) && !blocked
   const icon = locked ? 'lock' : choice.icon || 'shelter'
   return (
     <button
@@ -198,9 +199,9 @@ export function ChoiceButton({ choice, owned, partLabel, onPick, variant = 'tech
       {variant === 'diary' && <Icon name={icon} />}
       <span className="choice-copy">
         <strong>{choice.label}</strong>
-        <small>{locked ? `Requer: ${partLabel}` : choice.detail}</small>
+        <small>{needsPart ? `Requires: ${partLabel}` : blocked ? 'Another seat has this call' : choice.detail}</small>
       </span>
-      {unlocked && <em className="badge">DISPONÍVEL: {partLabel}</em>}
+      {unlocked && <em className="badge">AVAILABLE: {partLabel}</em>}
     </button>
   )
 }

@@ -311,7 +311,22 @@ h1, h2, h3 { font-weight: 800; }
 .aside { max-width: 360px; color: var(--muted); font-size: 14.5px; text-align: right; }
 .assembly { display: grid; grid-template-columns: minmax(0, 1.45fr) 230px minmax(270px, 0.92fr); gap: 14px; align-items: start; }
 .panel { background: var(--card); border: 1px solid var(--line); padding: 14px; }
-.tabs { display: flex; gap: 14px; border-bottom: 1px solid var(--line); margin: -4px 0 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 14px; border-bottom: 1px solid var(--line); margin: -4px 0 12px; }
+.why { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0; margin: 0 0 14px; }
+.why li { border: 1px solid var(--line); background: var(--card); color: var(--muted); font-size: 13px; line-height: 1.35; padding: 8px 10px; }
+.seat-row { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 12px; }
+.seat-row button, .crew-picks button {
+  border: 1px solid var(--line); background: transparent; padding: 6px 8px;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.06em;
+}
+.seat-row button.on, .crew-picks button.on { border-color: var(--orange); color: var(--orange); }
+.sandbox-fields { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.sandbox-fields input, .archive-list input {
+  width: 100%; background: #0c121a; border: 1px solid var(--line); color: var(--cream); padding: 8px 10px;
+}
+.crew-picks { display: flex; gap: 8px; align-items: center; }
+.desk-pass { margin-bottom: 10px; }
+.ranking { margin-bottom: 22px; }
 .tabs button {
   background: none;
   border: 0;

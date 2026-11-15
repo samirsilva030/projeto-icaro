@@ -9,6 +9,7 @@ import {
   MissionSelect,
   Report,
   Settings,
+  TeamSetup,
   Voyage,
 } from './screens.jsx'
 import { boot, loadSave, reducer, writeSave } from './store.js'
@@ -55,13 +56,31 @@ export default function App() {
     )
   }
 
+  if (state.screen === 'team') {
+    return (
+      <TeamSetup
+        team={state.team}
+        onSave={(team) => dispatch({ type: 'SET_TEAM', team })}
+        onHangar={() => go('TO_HANGAR')}
+        onBack={() => go('TO_HANGAR')}
+      />
+    )
+  }
+
   if (state.screen === 'assembly') {
     return (
       <Assembly
         missionId={state.missionId}
         parts={state.parts}
+        design={state.design}
+        team={state.team}
+        seat={state.seat}
         confirm={state.confirm}
         onToggle={(id) => go('TOGGLE_PART', { id })}
+        onInstrument={(id) => go('TOGGLE_INSTRUMENT', { id })}
+        onPatch={(patch) => dispatch({ type: 'PATCH_DESIGN', patch })}
+        onSeat={(seat) => dispatch({ type: 'SET_SEAT', seat })}
+        onTeam={() => go('TO_TEAM')}
         onBack={() => go('BACK_MISSIONS')}
         onAsk={() => go('ASK_LAUNCH')}
         onCancel={() => go('CANCEL_LAUNCH')}
@@ -75,6 +94,7 @@ export default function App() {
       <Launch
         missionId={state.missionId}
         parts={state.parts}
+        design={state.design}
         sound={state.settings.sound}
         onDone={() => dispatch({ type: 'ENTER_FLIGHT' })}
         onAbort={() => go('RETRY')}
@@ -87,9 +107,12 @@ export default function App() {
       <Voyage
         missionId={state.missionId}
         run={state.run}
+        team={state.team}
+        seat={state.seat}
         pause={state.pause}
         sound={state.settings.sound}
         onChoose={(id) => dispatch({ type: 'CHOOSE', id })}
+        onSeat={(seat) => dispatch({ type: 'SET_SEAT', seat })}
         onPause={() => go('PAUSE')}
         onResume={() => go('RESUME')}
         onMenu={() => go('SAVE_MENU')}

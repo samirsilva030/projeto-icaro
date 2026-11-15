@@ -1,4 +1,12 @@
-import { EVENTS, LANDING_COPY, MISSION_MAP, PART_MAP } from './data.js'
+import {
+  EVENTS,
+  INSTRUMENT_MAP,
+  LANDING_COPY,
+  LAUNCHER_MAP,
+  MISSION_MAP,
+  ORBITS,
+  PART_MAP,
+} from './data.js'
 
 export function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n))
@@ -37,6 +45,89 @@ export function partMass(part) {
   return part.dry + part.propellant
 }
 
+export function defaultDesign(missionId) {
+  const mission = MISSION_MAP[missionId] || MISSION_MAP.selene
+  const orbits = ORBITS[mission.id] || ORBITS.sandbox
+  return {
+    orbitId: orbits[0].id,
+    launcherId: 'baseline',
+    instrumentIds: [],
+    crew: mission.crew,
+    objective: mission.summary,
+  }
+}
+
+export function evaluateDesign(mission, partIds, design) {
+  const plan = { ...defaultDesign(mission.id), ...(design || {}) }
+  const orbits = ORBITS[mission.id] || ORBITS.sandbox
+  const orbit = orbits.find((item) => item.id === plan.orbitId) || orbits[0]
+  const launcher = LAUNCHER_MAP[plan.launcherId] || LAUNCHER_MAP.baseline
+  const instruments = (plan.instrumentIds || []).map((id) => INSTRUMENT_MAP[id]).filter(Boolean)
+  const crew = mission.id === 'sandbox' ? clamp(Number(plan.crew) || 0, 0, 4) : mission.crew
+  let cost = mission.base.cost + launcher.cost
+  let dry = mission.base.dry + launcher.dry
+  let propellant = mission.base.propellant
+  let thrust = mission.base.thrust + launcher.thrust
+  for (const id of partIds) {
+    const part = PART_MAP[id]
+    if (!part) continue
+    cost += part.cost
+    dry += part.dry
+    propellant += part.propellant
+    thrust += part.thrust
+  }
+  for (const instrument of instruments) {
+    cost += instrument.cost
+    dry += instrument.dry
+  }
+  const mass = dry + propellant
+  const twr = mass > 0 ? thrust / mass : 0
+  const dv = dry > 0 && mass > dry ? mission.base.ve * Math.log(mass / dry) : 0
+  const ship = {
+    cost,
+    dry,
+    propellant,
+    mass,
+    thrust,
+    twr,
+    dv,
+    seats: mission.id === 'sandbox' ? 4 : mission.base.seats,
+  }
+  const dvRequired = mission.dvRequired + orbit.dvAdd
+  const maxMass = mission.maxMass + launcher.massLimit
+  const powerGen = Math.round(((crew > 0 ? 80 : 50) + (partIds.includes('solar') ? 60 : 0)) * orbit.sun)
+  const powerUse = 20 + instruments.reduce((sum, item) => sum + item.power, 0)
+  const comms = orbit.comms + (partIds.includes('computer') ? 5 : 0)
+  const data = instruments.reduce((sum, item) => sum + item.data, 0)
+  const fit = data <= 0 ? 1 : Math.min(1, comms / data)
+  const powerFactor = powerGen >= powerUse ? 1 : 0.4
+  const delivered = Math.round(
+    instruments.reduce((sum, item) => sum + item.science, 0) * fit * powerFactor * orbit.science,
+  )
+  const profile = {
+    ...mission,
+    crew,
+    dvRequired,
+    maxMass,
+    summary: plan.objective || mission.summary,
+  }
+  return {
+    ship,
+    mission: profile,
+    orbit,
+    launcher,
+    instruments,
+    powerGen,
+    powerUse,
+    comms,
+    data,
+    delivered,
+    life: orbit.life,
+    wear: orbit.wear,
+    objective: plan.objective || mission.summary,
+  }
+}
+
 export function computeShip(mission, partIds) {
   let cost = mission.base.cost
   let dry = mission.base.dry
@@ -60,33 +151,33 @@ export function shipWarnings(mission, ship, partIds) {
   const confirm = []
   const notes = []
   if (ship.dv < mission.dvRequired) {
-    confirm.push('O Δv fica abaixo do que a missão pede. A nave pode ficar sem propelente no caminho.')
+    confirm.push('Δv is below what the mission needs. The ship can run out of propellant on the way.')
   }
   if (mission.critical.includes('lander') && !partIds.includes('lander')) {
-    confirm.push('Sem módulo de pouso, a descida vira um impacto.')
+    confirm.push('Without a landing module, the descent becomes an impact.')
   }
   if (mission.critical.includes('heat') && !partIds.includes('heat')) {
     confirm.push(
       mission.id === 'ares'
-        ? 'Sem escudo térmico, a entrada em Marte come o casco.'
-        : 'Sem escudo térmico, a reentrada a 40.000 km/h não tem sobreviventes.',
+        ? 'Without a heat shield, Mars entry eats the hull.'
+        : 'Without a heat shield, reentry at 40,000 km/h has no survivors.',
     )
   }
   if (mission.warn.includes('radiation') && !partIds.includes('radiation') && mission.crew > 0) {
-    notes.push('Sem blindagem, uma tempestade solar obriga a tripulação a parar a pesquisa.')
+    notes.push('Without shielding, a solar storm forces the crew to stop the research.')
   }
   if (mission.warn.includes('solar') && !partIds.includes('solar')) {
-    notes.push('Sem painéis, a energia no cruzeiro longo fica no limite das baterias.')
+    notes.push('Without panels, power on a long cruise sits at the edge of the batteries.')
   }
   return { confirm, notes }
 }
 
 export function hardFailures(mission, ship) {
   const blocks = []
-  if (ship.cost > mission.budget) blocks.push('Acima do orçamento.')
-  if (ship.mass > mission.maxMass) blocks.push('Acima da massa máxima.')
-  if (ship.twr < 1.2) blocks.push('Empuxo insuficiente para decolar.')
-  if (ship.seats < mission.crew) blocks.push('Assentos insuficientes para a tripulação.')
+  if (ship.cost > mission.budget) blocks.push('Over budget.')
+  if (ship.mass > mission.maxMass) blocks.push('Over the mass limit.')
+  if (ship.twr < 1.2) blocks.push('Not enough thrust to lift off.')
+  if (ship.seats < mission.crew) blocks.push('Not enough seats for the crew.')
   return blocks
 }
 
@@ -118,9 +209,9 @@ function drawFrom(ids, count, rand) {
 
 function bumpTime(time, step) {
   if (!time) return time
-  if (time.startsWith('DIA')) {
+  if (time.startsWith('DAY')) {
     const day = Number(time.replace(/\D/g, ''))
-    return `DIA ${String(day + step).padStart(2, '0')}`
+    return `DAY ${String(day + step).padStart(2, '0')}`
   }
   return time
 }
@@ -216,7 +307,7 @@ function marginOf(run) {
   return run.dv - run.dvNeeded
 }
 
-export function createRun(mission, ship, partIds, seed) {
+export function createRun(mission, ship, partIds, seed, extras = {}) {
   const built = buildSteps(mission, seed)
   return {
     missionId: mission.id,
@@ -227,12 +318,18 @@ export function createRun(mission, ship, partIds, seed) {
     index: 0,
     dv: ship.dv,
     dvNeeded: mission.dvRequired,
+    dvGoal: mission.dvRequired,
     shipDv: ship.dv,
     twr: ship.twr,
+    crew: mission.crew,
+    wear: extras.wear || 1,
+    brief: extras.brief || null,
     integrity: 100,
-    oxygen: mission.crew > 0 ? 100 : 100,
-    science: 0,
-    log: [],
+    oxygen: 100,
+    science: extras.delivered || 0,
+    log: extras.delivered
+      ? [{ time: 'T+00:00:00', text: `Payload checked in. ${extras.delivered} science is already on the recorder.`, tone: 'good', beat: true }]
+      : [],
     history: [],
     ended: null,
   }
@@ -242,10 +339,10 @@ function finish(run, success, cause) {
   const mission = MISSION_MAP[run.missionId]
   const copy = success ? successCopy(mission) : failureCopy(cause)
   const margin = marginOf(run)
-  const progress = 1 - clamp(run.dvNeeded / mission.dvRequired, 0, 1)
+  const progress = 1 - clamp(run.dvNeeded / (run.dvGoal || mission.dvRequired), 0, 1)
   let score = Math.round(run.integrity * 0.55 + run.science * 0.85 + Math.max(0, margin) * 46 + progress * 72)
   if (success) score += 86
-  if (mission.crew > 0) score += Math.round(run.oxygen * 0.12)
+  if ((run.crew ?? mission.crew) > 0) score += Math.round(run.oxygen * 0.12)
   score = Math.max(0, score)
   return {
     ...run,
@@ -262,6 +359,7 @@ function finish(run, success, cause) {
       oxygen: run.oxygen,
       goal: mission.scienceGoal,
       history: run.history,
+      brief: run.brief || null,
     },
   }
 }
@@ -269,72 +367,79 @@ function finish(run, success, cause) {
 function successCopy(mission) {
   if (mission.id === 'sentinela') {
     return {
-      title: 'SUCESSO',
-      subtitle: 'ÓRBITA ESTÁVEL',
-      text: 'O satélite climático está no posto, a 550 km. A Terra ganha um olho novo sobre o próprio clima.',
+      title: 'SUCCESS',
+      subtitle: 'STABLE ORBIT',
+      text: 'The climate satellite is on station, at 550 km. Earth gets a new eye on its own weather.',
     }
   }
   if (mission.id === 'ares') {
     return {
-      title: 'SUCESSO',
-      subtitle: 'BASE ACORDADA',
-      text: 'Quatro pessoas passam a primeira noite em Jezero. Marte deixa de ser só um ponto no céu.',
+      title: 'SUCCESS',
+      subtitle: 'BASE AWAKE',
+      text: 'Four people spend the first night in Jezero. Mars stops being only a point in the sky.',
+    }
+  }
+  if (mission.id === 'sandbox') {
+    return {
+      title: 'SUCCESS',
+      subtitle: 'OBJECTIVE MET',
+      text: 'The custom mission holds together. The trades you accepted are still in the numbers.',
     }
   }
   return {
-    title: 'SUCESSO',
-    subtitle: 'DE VOLTA PARA CASA',
-    text: 'A tripulação atravessa a reentrada e desce inteira. A Lua ficou para trás. Os dados, não.',
+    title: 'SUCCESS',
+    subtitle: 'HOME AGAIN',
+    text: 'The crew comes through reentry and down in one piece. The Moon is behind them. The data is not.',
   }
 }
 
 function failureCopy(cause) {
   if (cause === 'fuel') {
     return {
-      title: 'FALHA',
-      subtitle: 'À DERIVA NO ESPAÇO',
-      text: 'O combustível acabou antes do objetivo. A nave segue em uma órbita sem volta.',
+      title: 'FAILURE',
+      subtitle: 'ADRIFT IN SPACE',
+      text: 'The propellant ran out before the objective. The ship continues on an orbit with no way back.',
     }
   }
   if (cause === 'oxygen') {
     return {
-      title: 'FALHA',
-      subtitle: 'AR RARO',
-      text: 'O oxigênio acaba antes da missão. A tripulação não responde ao chamado seguinte.',
+      title: 'FAILURE',
+      subtitle: 'THIN AIR',
+      text: 'The oxygen runs out before the mission does. The crew does not answer the next call.',
     }
   }
   if (cause === 'landing') {
     return {
-      title: 'FALHA',
-      subtitle: 'IMPACTO',
-      text: 'O pouso não encontra o solo — encontra o fim da missão. O sinal se perde na poeira.',
+      title: 'FAILURE',
+      subtitle: 'IMPACT',
+      text: 'The landing does not find the ground. It finds the end of the mission. The signal is lost in the dust.',
     }
   }
   if (cause === 'reentry') {
     return {
-      title: 'FALHA',
-      subtitle: 'QUEIMA',
-      text: 'A reentrada consome a cápsula. O plasma entra onde deveria haver escudo.',
+      title: 'FAILURE',
+      subtitle: 'BURNUP',
+      text: 'Reentry consumes the capsule. Plasma enters where a shield should have been.',
     }
   }
   if (cause === 'skip') {
     return {
-      title: 'FALHA',
-      subtitle: 'SEM SEGUNDA JANELA',
-      text: 'A cápsula ricocheteia na atmosfera e volta ao espaço. Não há propelente para outra tentativa.',
+      title: 'FAILURE',
+      subtitle: 'NO SECOND WINDOW',
+      text: 'The capsule skips off the atmosphere and back into space. There is no propellant for another try.',
     }
   }
   return {
-    title: 'FALHA',
-    subtitle: 'PERDA DO VEÍCULO',
-    text: 'A estrutura não aguenta. O contato com a nave termina no meio da telemetria.',
+    title: 'FAILURE',
+    subtitle: 'LOSS OF VEHICLE',
+    text: 'The structure does not hold. Contact with the ship ends in the middle of the telemetry.',
   }
 }
 
 function killCheck(run, lethal) {
   if (run.integrity <= 0) return finish(run, false, lethal || 'integrity')
   const mission = MISSION_MAP[run.missionId]
-  if (mission.crew > 0 && run.oxygen <= 0) return finish(run, false, 'oxygen')
+  if ((run.crew ?? mission.crew) > 0 && run.oxygen <= 0) return finish(run, false, 'oxygen')
   if (run.dv < -0.001) return finish(run, false, 'fuel')
   return null
 }
@@ -349,14 +454,16 @@ function applyFx(run, fx) {
 function clockTax(run, step) {
   const mission = MISSION_MAP[run.missionId]
   const hard = mission.id === 'ares' ? 1.15 : mission.id === 'sentinela' ? 0.35 : 1
-  let dv = -0.02 * hard
+  const wear = run.wear || 1
+  const crew = run.crew ?? mission.crew
+  let dv = -0.02 * hard * wear
   let oxygen = 0
   let integrity = -1
   if (step.kind === 'burn') {
-    dv -= 0.04 * hard
-    if (mission.crew > 0) oxygen -= 3
+    dv -= 0.04 * hard * wear
+    if (crew > 0) oxygen -= 3
     if (run.parts.includes('computer')) dv += 0.025 * hard
-  } else if (step.presentation === 'diary' && mission.crew > 0) {
+  } else if (step.presentation === 'diary' && crew > 0) {
     oxygen -= 5
     integrity -= 2
     if (!run.parts.includes('solar')) oxygen -= 3
@@ -368,15 +475,15 @@ function clockTax(run, step) {
   run.oxygen = clamp(run.oxygen + oxygen, 0, 100)
   run.integrity = clamp(run.integrity + integrity, 0, 100)
   const bits = []
-  if (Math.abs(dv) >= 0.005) bits.push(`correção ${dv.toFixed(2)} km/s`)
-  if (oxygen) bits.push(`oxigênio ${oxygen}`)
-  if (integrity) bits.push(`integridade ${integrity}`)
+  if (Math.abs(dv) >= 0.005) bits.push(`correction ${dv.toFixed(2)} km/s`)
+  if (oxygen) bits.push(`oxygen ${oxygen}`)
+  if (integrity) bits.push(`integrity ${integrity}`)
   if (bits.length) {
     run.log = [
       ...run.log,
       {
         time: step.time,
-        text: `O tempo passa. ${bits.join(' · ')}.`,
+        text: `Time passes. ${bits.join(' · ')}.`,
         tone: integrity < -1 || oxygen < -6 ? 'bad' : 'neutral',
       },
     ]
@@ -395,7 +502,7 @@ export function advance(run) {
         ...run.log,
         {
           time: step.time,
-          text: `${step.label.replace(' concluída', '')} não fecha. O tanque seca antes do corte.`,
+          text: `${step.label} does not close. The tank runs dry before cutoff.`,
           tone: 'bad',
         },
       ]
@@ -405,7 +512,7 @@ export function advance(run) {
     run.dvNeeded = Math.max(0, run.dvNeeded - cost)
     run.log = [
       ...run.log,
-      { time: step.time, text: `${step.label}. O motor corta. Lá fora, o silêncio chega de uma vez.`, tone: 'neutral' },
+      { time: step.time, text: `${step.label}. The engine cuts. Outside, the silence arrives all at once.`, tone: 'neutral' },
     ]
     const worn = clockTax(run, step)
     if (worn) return worn
@@ -415,12 +522,12 @@ export function advance(run) {
   const arrived = clockTax(run, run.steps[index])
   if (arrived) return arrived
   const margin = marginOf(run)
-  if (margin < 0 && !run.log.some((line) => line.text.startsWith('A margem de propelente'))) {
+  if (margin < 0 && !run.log.some((line) => line.text.startsWith('Propellant margin'))) {
     run.log = [
       ...run.log,
       {
         time: run.steps[index].time,
-        text: 'A margem de propelente ficou negativa. A próxima queima grande pode não fechar.',
+        text: 'Propellant margin went negative. The next big burn may not close.',
         tone: 'bad',
       },
     ]
@@ -481,17 +588,17 @@ export function applyChoice(original, choiceId) {
       return dead
     }
     if (!run.parts.includes('heat')) {
-      logText = 'A segunda passagem encontra o mesmo plasma. Sem escudo, a cápsula não atravessa.'
+      logText = 'The second pass meets the same plasma. Without a shield, the capsule does not make it through.'
       remember(run, step, event, choice.label, logText, 'bad')
       run.integrity = 0
       return finish(run, false, 'reentry')
     }
     if (run.dv < 0.15) {
-      logText = 'A cápsula ricocheteia e volta ao espaço. Não sobra propelente para uma segunda janela.'
+      logText = 'The capsule skips and falls back into space. No propellant is left for a second window.'
       remember(run, step, event, choice.label, logText, 'bad')
       return finish(run, false, 'skip')
     }
-    logText = 'A cápsula quica na atmosfera, ainda há propelente, e a segunda passagem atravessa o fogo.'
+    logText = 'The capsule skips off the atmosphere, propellant remains, and the second pass goes through the fire.'
     remember(run, step, event, choice.label, logText, 'good')
     run.integrity = clamp(run.integrity - 6, 0, 100)
     const burned = killCheck(run, 'reentry')
